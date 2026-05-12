@@ -15,7 +15,7 @@ services:
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"commonjs","moduleResolution":"node"}
     volumes:
-      - hls_data:/app/hls_out
+      - ./hls_out:/app/hls_out
     depends_on:
       - redis
 
@@ -28,9 +28,7 @@ services:
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"commonjs","moduleResolution":"node"}
     volumes:
-      - hls_data:/app/hls_out
-    ports:
-      - "3000:3000"
+      - ./hls_out:/app/hls_out
     depends_on:
       - redis
 
@@ -40,5 +38,13 @@ services:
     container_name: live-streamer
     depends_on:
       - receiver
-volumes:
-  hls_data:
+
+  # 5. Edge Server (Nginx)
+  edge-server:
+    build: ./services/edge-server
+    container_name: live-edge-server
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
