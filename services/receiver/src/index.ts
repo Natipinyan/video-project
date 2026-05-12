@@ -6,9 +6,9 @@ import * as chokidar from 'chokidar';
 import * as fs from 'fs';
 
 //connect to Redis
-const redis = new Redis();
+const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
 //path to store HLS output
-const outputDir = path.resolve(__dirname, '../../../hls_out');
+const outputDir = '/app/hls_out';
 
 //ensure output directory exists
 if (!fs.existsSync(outputDir)) {

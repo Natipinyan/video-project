@@ -6,12 +6,10 @@ import path from 'path';
 import fs from 'fs';
 
 const app = express();
-const redis = new Redis();
-const PORT = 3000;
+const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');const PORT = 3000;
 
 //path to HLS output directory (same as receiver's output)
-const HLS_DIR = path.resolve(__dirname, '../../../hls_out');
-
+const HLS_DIR = '/app/hls_out';
 app.use(cors());
 
 

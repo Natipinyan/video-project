@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 1. db
+  redis:
+    image: redis:alpine
+    container_name: live-redis
+
+  # 2. video process
+  receiver:
+    build: ./services/receiver
+    container_name: live-receiver
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - TS_NODE_TRANSPILE_ONLY=true
+      - TS_NODE_COMPILER_OPTIONS={"module":"commonjs","moduleResolution":"node"}
+    volumes:
+      - hls_data:/app/hls_out
+    depends_on:
+      - redis
+
+  # 3. front
+  api:
+    build: ./services/frontend-api
+    container_name: live-api
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - TS_NODE_TRANSPILE_ONLY=true
+      - TS_NODE_COMPILER_OPTIONS={"module":"commonjs","moduleResolution":"node"}
+    volumes:
+      - hls_data:/app/hls_out
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+
+  # 4. streamer
+  streamer:
+    build: ./services/streamer
+    container_name: live-streamer
+    depends_on:
+      - receiver
+volumes:
+  hls_data:
