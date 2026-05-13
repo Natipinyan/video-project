@@ -4,3 +4,4 @@ hls_out/
 *.log
 .env
 .idea/
+/services/streamer-2/sample2.mp4

@@ -8,6 +8,4 @@ COPY package*.json ./
 RUN npm install
 COPY src/ ./src/
 
-EXPOSE 1234/udp
-
 CMD ["ts-node", "--transpile-only", "--compiler-options", "{\"ignoreDeprecations\":\"6.0\"}", "src/index.ts"]
