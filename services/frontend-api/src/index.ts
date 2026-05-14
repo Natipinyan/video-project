@@ -61,6 +61,11 @@ app.get('/:channel/:segment', async (req: Request, res: Response) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Frontend API with Internal Cache is running on port ${PORT}`);
-});
+export { app };
+export default app;
+
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+        console.log(`Frontend API with Internal Cache is running on port ${PORT}`);
+    });
+}
