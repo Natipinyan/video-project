@@ -51,6 +51,6 @@ export default app;
 
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, () => {
-        console.log(`Frontend API (No Cache) is running on port ${PORT}`);
+        console.log(`Backend API (No Cache) is running on port ${PORT}`);
     });
 }

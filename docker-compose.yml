@@ -58,11 +58,12 @@ services:
       - redis
 
   # ==========================================
-  # THE BRIDGE: FRONTEND API
-  # Exposes the video segments and playlists from the Source Redis to the world.
+  # THE SOURCE GATEWAY: BACKEND API
+  # Exposes video segments and playlists from the Source Redis to distribution sites.
   # ==========================================
+
   api:
-    build: ./services/frontend-api
+    build: services/backend-api
     container_name: live-api
     environment:
       - REDIS_URL=redis://redis:6379
@@ -78,7 +79,7 @@ services:
   # Handles high traffic by caching content and serving the Web UI.
   # ==========================================
 
-  # Distribution server that caches content to reduce load on the source API
+  # Distribution server that caches content to reduce load on the core Backend API
   edge-server:
     build: ./services/edge-server
     container_name: live-edge-server
@@ -98,7 +99,7 @@ services:
     image: redis:alpine
     container_name: edge-redis
 
-  # React + Vite application that interacts only with the Edge Server
+  # React + Vite application that interacts only with the Edge Server (Frontend Client)
   web-ui:
     build: ./services/web-ui
     container_name: live-web-ui
