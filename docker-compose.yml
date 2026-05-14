@@ -1,25 +1,47 @@
 version: '3.8'
 
 services:
-  # 1. db
+
+  # ==========================================
+  # THE STREAMERS (Video Sources)
+  # Responsible for generating or streaming the raw video feed.
+  # ==========================================
+  streamer-1:
+    build: services/streamer-1
+    container_name: live-streamer-1
+    depends_on:
+      - receiver-1
+
+  streamer-2:
+    build: services/streamer-2
+    container_name: live-streamer-2
+    depends_on:
+      - receiver-2
+
+  # ==========================================
+  # BASE SITE: SOURCE SITE (Processing & Storage)
+  # Receives, processes (HLS encoding), and stores video data locally.
+  # ==========================================
+
+  # Main database for the source site
   redis:
     image: redis:alpine
     container_name: live-redis
 
-  # 2. video process
+  # Receivers handle UDP streams and convert them to HLS segments stored in Redis
   receiver-1:
-      build: ./services/receiver
-      container_name: live-receiver-1
-      environment:
-        - REDIS_URL=redis://redis:6379
-        - CHANNEL_NAME=channel1
-        - UDP_PORT=1234
-        - TS_NODE_TRANSPILE_ONLY=true
-        - TS_NODE_COMPILER_OPTIONS={"module":"commonjs","moduleResolution":"node"}
-      volumes:
-        - ./hls_out/ch1:/app/hls_out
-      depends_on:
-        - redis
+    build: ./services/receiver
+    container_name: live-receiver-1
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CHANNEL_NAME=channel1
+      - UDP_PORT=1234
+      - TS_NODE_TRANSPILE_ONLY=true
+      - TS_NODE_COMPILER_OPTIONS={"module":"commonjs","moduleResolution":"node"}
+    volumes:
+      - ./hls_out/ch1:/app/hls_out
+    depends_on:
+      - redis
 
   receiver-2:
     build: ./services/receiver
@@ -35,7 +57,10 @@ services:
     depends_on:
       - redis
 
-  # 3. front
+  # ==========================================
+  # THE BRIDGE: FRONTEND API
+  # Exposes the video segments and playlists from the Source Redis to the world.
+  # ==========================================
   api:
     build: ./services/frontend-api
     container_name: live-api
@@ -48,36 +73,38 @@ services:
     depends_on:
       - redis
 
-  # 4. streamer
-  streamer-1:
-      build: services/streamer-1
-      container_name: live-streamer-1
-      depends_on:
-        - receiver-1
+  # ==========================================
+  # REGULAR SITE: DISTRIBUTION SITE (Edge & UI)
+  # Handles high traffic by caching content and serving the Web UI.
+  # ==========================================
 
-  streamer-2:
-    build: services/streamer-2
-    container_name: live-streamer-2
+  # Distribution server that caches content to reduce load on the source API
+  edge-server:
+    build: ./services/edge-server
+    container_name: live-edge-server
+    environment:
+      - REDIS_URL=redis://edge-redis:6379
+      - BACKEND_API_URL=http://api:3000
+      - TS_NODE_TRANSPILE_ONLY=true
+      - TS_NODE_COMPILER_OPTIONS={"module":"commonjs","moduleResolution":"node"}
+    ports:
+      - "8080:8080"
     depends_on:
-      - receiver-2
+      - api
+      - edge-redis
 
-  # 5. Web UI (React + Vite)
+  # Local Redis for the Edge site to store cached segments/playlists
+  edge-redis:
+    image: redis:alpine
+    container_name: edge-redis
+
+  # React + Vite application that interacts only with the Edge Server
   web-ui:
     build: ./services/web-ui
     container_name: live-web-ui
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:3000
-  #    depends_on:
-  #      - edge-server
-
-
-  #  # 6. Edge Server (Nginx)
-  #  edge-server:
-  #    build: ./services/edge-server
-  #    container_name: live-edge-server
-  #    ports:
-  #      - "8080:80"
-  #    depends_on:
-  #      - api
+      - VITE_API_URL=http://localhost:8080
+    depends_on:
+      - edge-server

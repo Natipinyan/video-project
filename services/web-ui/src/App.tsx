@@ -16,7 +16,8 @@ export default function App() {
   useEffect(() => {
     if (selectedChannel && videoRef.current) {
       const video = videoRef.current;
-      const url = `http://localhost:3000/${selectedChannel}/stream.m3u8`;
+      const url = `http://localhost:8080/${selectedChannel}/stream.m3u8`;
+      //const url = `http://localhost:3000/${selectedChannel}/stream.m3u8`;
 
       if (Hls.isSupported()) {
         const hls = new Hls();
