@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-import NodeCache from 'node-cache';
 
 // Global variables to control the mocked states
 let mockGetValue: any = null;
@@ -25,25 +24,7 @@ vi.mock('ioredis', () => {
     };
 });
 
-// Mocking 'node-cache' to allow manual cache clearing between test runs
-vi.mock('node-cache', () => {
-    class MockNodeCache {
-        static instances: any[] = [];
-        cache: any;
-        constructor(options: any) {
-            this.cache = new Map();
-            MockNodeCache.instances.push(this);
-        }
-        get(key: string) { return this.cache.get(key); }
-        set(key: string, val: any) { this.cache.set(key, val); return true; }
-        flushAll() { this.cache.clear(); }
-    }
-    return { default: MockNodeCache };
-});
-
 import app from './index';
-// @ts-ignore
-import NodeCacheMock from 'node-cache';
 
 describe('Streaming API Tests', () => {
 
@@ -51,7 +32,6 @@ describe('Streaming API Tests', () => {
         mockGetValue = null;
         mockGetBufferValue = null;
         shouldThrowError = false;
-        (NodeCacheMock as any).instances.forEach((inst: any) => inst.flushAll());
     });
 
     // =========================================================================

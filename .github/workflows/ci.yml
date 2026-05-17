@@ -17,14 +17,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' #
+          node-version: '20'
           cache: 'npm'
-          cache-dependency-path: ./services/backend-api/package-lock.json
+          cache-dependency-path: ./package-lock.json
 
-      - name: Install Dependencies
-        working-directory: ./services/backend-api
+      - name: Install Workspace Dependencies
         run: npm ci
 
+      - name: Run Security Audit
+        run: npm audit --audit-level=high
+
       - name: Run Vitest Unit Tests
-        working-directory: ./services/backend-api
-        run: npm test
+        run: npm test --workspace=backend-api
