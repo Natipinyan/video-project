@@ -15,6 +15,23 @@ app.use(cors({
     exposedHeaders: ['Content-Length', 'Content-Range']
 }));
 
+// Health check endpoint
+app.get('/health', async (req: Request, res: Response) => {
+    try {
+        const redisStatus = await redis.ping();
+        if (redisStatus !== 'PONG') {
+            throw new Error('Local Edge Redis did not respond with PONG');
+        }
+
+        await axios.get(`${BACKEND_URL}/health`, { timeout: 2000 });
+
+        return res.status(200).send('OK');
+    } catch (err: any) {
+        console.error(`[EDGE HEALTHCHECK FAILED]: ${err.message}`);
+        return res.status(500).send('Unhealthy');
+    }
+});
+
 app.get('/:channel/:file', async (req: Request, res: Response) => {
     const { channel, file } = req.params;
     const cacheKey = `edge:${channel}:${file}`;

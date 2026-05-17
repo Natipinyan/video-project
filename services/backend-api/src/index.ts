@@ -8,6 +8,27 @@ const PORT = 3000;
 
 app.use(cors());
 
+
+// Health check endpoint
+app.get('/health', async (req: Request, res: Response) => {
+    try {
+        const pingPromise = redis.ping();
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Redis ping timeout')), 2000)
+        );
+
+        const status = await Promise.race([pingPromise, timeoutPromise]);
+
+        if (status === 'PONG') {
+            return res.status(200).send('OK');
+        }
+        throw new Error('Redis did not respond with PONG');
+    } catch (err) {
+        console.error(`[HEALTHCHECK FAILED]: ${err}`);
+        return res.status(500).send('Unhealthy');
+    }
+});
+
 // Route for M3U8 Playlist
 app.get('/:channel/stream.m3u8', async (req: Request, res: Response) => {
     const { channel } = req.params;

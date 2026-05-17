@@ -10,13 +10,15 @@ services:
     build: services/streamer-1
     container_name: live-streamer-1
     depends_on:
-      - receiver-1
+      receiver-1:
+        condition: service_healthy
 
   streamer-2:
     build: services/streamer-2
     container_name: live-streamer-2
     depends_on:
-      - receiver-2
+      receiver-2:
+        condition: service_healthy
 
   # ==========================================
   # BASE SITE: SOURCE SITE (Processing & Storage)
@@ -27,6 +29,11 @@ services:
   redis:
     image: redis:alpine
     container_name: live-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 1s
+      retries: 3
 
   # Receivers handle UDP streams and convert them to HLS segments stored in Redis
   receiver-1:
@@ -41,7 +48,14 @@ services:
     volumes:
       - ./hls_out/ch1:/app/hls_out
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "nc", "-zu", "127.0.0.1", "1234" ]
+      interval: 3s
+      timeout: 1s
+      retries: 3
+
 
   receiver-2:
     build: ./services/receiver
@@ -55,13 +69,18 @@ services:
     volumes:
       - ./hls_out/ch2:/app/hls_out
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "nc", "-zu", "127.0.0.1", "1235" ]
+      interval: 3s
+      timeout: 1s
+      retries: 3
 
   # ==========================================
   # THE SOURCE GATEWAY: BACKEND API
   # Exposes video segments and playlists from the Source Redis to distribution sites.
   # ==========================================
-
   api:
     build: services/backend-api
     container_name: live-api
@@ -72,7 +91,13 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
 
   # ==========================================
   # REGULAR SITE: DISTRIBUTION SITE (Edge & UI)
@@ -91,13 +116,25 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - api
-      - edge-redis
+      api:
+        condition: service_healthy
+      edge-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
 
   # Local Redis for the Edge site to store cached segments/playlists
   edge-redis:
     image: redis:alpine
     container_name: edge-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 1s
+      retries: 3
 
   # React + Vite application that interacts only with the Edge Server (Frontend Client)
   web-ui:
@@ -108,4 +145,5 @@ services:
     environment:
       - VITE_API_URL=http://localhost:8080
     depends_on:
-      - edge-server
+      edge-server:
+        condition: service_healthy
