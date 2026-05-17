@@ -42,7 +42,6 @@ describe('Web UI Component and Smoke Tests', () => {
             fireEvent.click(card);
         });
 
-        // בדיקה ישירה ויציבה על ה-DOM הקיים
         const videoPlayer = container.querySelector('video');
         expect(videoPlayer).not.toBeNull();
     });
@@ -60,7 +59,6 @@ describe('Web UI Component and Smoke Tests', () => {
         const videoPlayer = container.querySelector('video');
         expect(videoPlayer).not.toBeNull();
 
-        // ממתינים שה-useEffect יזריק את משתנה הסביבה לתוך המוק של HLS
         await vi.waitFor(() => {
             expect(loadSourceMock).toHaveBeenCalledWith(
                 'http://edge-server-test:8080/channel2/stream.m3u8'

@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  run-api-tests:
+  run-all-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,5 +27,5 @@ jobs:
       - name: Run Security Audit
         run: npm audit --audit-level=high
 
-      - name: Run Vitest Unit Tests
-        run: npm test --workspace=backend-api
+      - name: Run Full Monorepo Test Suite
+        run: npm test
