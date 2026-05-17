@@ -4,15 +4,15 @@ import * as path from 'path';
 import * as chokidar from 'chokidar';
 import * as fs from 'fs';
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
-const outputDir = '/app/hls_out';
-const channelName = process.env.CHANNEL_NAME || 'default_channel';
+export const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
+export const outputDir = '/app/hls_out';
+export const channelName = process.env.CHANNEL_NAME || 'default_channel';
 
 if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
 
-function startFFmpeg() {
+export function startFFmpeg() {
     const udpPort = process.env.UDP_PORT || '1234';
 
     const args = [
@@ -37,7 +37,7 @@ function startFFmpeg() {
     return ffmpegProcess;
 }
 
-function startFileWatcher() {
+export function startFileWatcher() {
     console.log(`[${channelName}] Monitoring directory: ${outputDir}`);
 
     const watcher = chokidar.watch(outputDir, {
@@ -77,13 +77,17 @@ function startFileWatcher() {
     });
 
     watcher.on('ready', () => console.log(`[${channelName}] Watcher is active.`));
+
+    return watcher;
 }
 
-const ffmpeg = startFFmpeg();
-startFileWatcher();
+if (process.env.NODE_ENV !== 'test') {
+    const ffmpeg = startFFmpeg();
+    startFileWatcher();
 
-process.on('SIGINT', () => {
-    ffmpeg.kill();
-    redis.disconnect();
-    process.exit();
-});
+    process.on('SIGINT', () => {
+        ffmpeg.kill();
+        redis.disconnect();
+        process.exit();
+    });
+}

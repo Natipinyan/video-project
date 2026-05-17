@@ -3,8 +3,8 @@ import Redis from 'ioredis';
 import axios from 'axios';
 import cors from 'cors';
 
-const app = express();
-const redis = new Redis(process.env.REDIS_URL || 'redis://edge-redis:6379');
+export const app = express();
+export const redis = new Redis(process.env.REDIS_URL || 'redis://edge-redis:6379');
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://api:3000';
 const PORT = 8080;
 
@@ -33,7 +33,7 @@ app.get('/health', async (req: Request, res: Response) => {
 });
 
 app.get('/:channel/:file', async (req: Request, res: Response) => {
-    const { channel, file } = req.params;
+    const { channel, file } = req.params as { channel: string; file: string };
     const cacheKey = `edge:${channel}:${file}`;
 
     try {
@@ -68,6 +68,8 @@ app.get('/:channel/:file', async (req: Request, res: Response) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Edge Server (Site B) is live on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+        console.log(`Edge Server (Site B) is live on port ${PORT}`);
+    });
+}

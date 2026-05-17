@@ -7,6 +7,9 @@
   "workspaces": [
     "services/*"
   ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present && vitest run tests/integration"
+  },
   "devDependencies": {
     "typescript": "^5.7.3",
     "@types/node": "^20.11.0"

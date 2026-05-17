@@ -2,6 +2,9 @@
   "name": "receiver",
   "version": "1.0.0",
   "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "chokidar": "^5.0.0",
     "ioredis": "^5.4.1"

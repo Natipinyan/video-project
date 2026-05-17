@@ -4,7 +4,7 @@ import { Monitor, ArrowLeft, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent } from "@/components/ui/card";
 
-const streams = [
+export const streams = [
   { value: "channel1", label: "Channel 1", description: "Main Network Feed" },
   { value: "channel2", label: "Channel 2", description: "Local Storage Stream" },
 ];
@@ -16,8 +16,10 @@ export default function App() {
   useEffect(() => {
     if (selectedChannel && videoRef.current) {
       const video = videoRef.current;
-      const url = `http://localhost:8080/${selectedChannel}/stream.m3u8`;
-      //const url = `http://localhost:3000/${selectedChannel}/stream.m3u8`;
+
+      // תיקון הבאג: שימוש במשתנה סביבה כפי שנדרש בדו"ח
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+      const url = `${baseUrl}/${selectedChannel}/stream.m3u8`;
 
       if (Hls.isSupported()) {
         const hls = new Hls();
@@ -43,6 +45,7 @@ export default function App() {
               {streams.map((stream) => (
                   <Card
                       key={stream.value}
+                      data-testid={`channel-card-${stream.value}`}
                       className="group cursor-pointer border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700 transition-all duration-300 transform hover:-translate-y-2 shadow-xl"
                       onClick={() => setSelectedChannel(stream.value)}
                   >
@@ -89,6 +92,7 @@ export default function App() {
         <div className="h-full w-full flex items-center justify-center bg-black">
           <video
               ref={videoRef}
+              data-testid="video-player"
               controls
               autoPlay
               muted
