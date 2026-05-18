@@ -2,11 +2,11 @@ import Redis from 'ioredis';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import { config } from './config';
 
-export const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
-
-export const outputDir = '/dev/shm/hls_out';
-export const channelName = process.env.CHANNEL_NAME || 'default_channel';
+export const redis = new Redis(config.redisUrl);
+export const outputDir = config.outputDir;
+export const channelName = config.channelName;
 
 if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -20,9 +20,8 @@ async function processCompletedFile(filePath: string) {
             const redisKey = `video:${channelName}:seg:${fileName}`;
 
             // RATIONALE: Media segments are immutable but high in bandwidth/memory.
-            // A 10-minute sliding window (EX 600) provides sufficient buffering history
-            // for late-joining edge servers or dynamic client DVR scrubbing without overflowing Redis memory.
-            await redis.set(redisKey, fileContent, 'EX', 600);
+            // Configurable sliding window (config.segmentTtl) provides sufficient history.
+            await redis.set(redisKey, fileContent, 'EX', config.segmentTtl);
             console.log(`[In-Memory Stream] Successfully cached segment ${fileName} for ${channelName}`);
 
             await fs.promises.unlink(filePath).catch(() => {});
@@ -30,10 +29,9 @@ async function processCompletedFile(filePath: string) {
             const playlistContent = await fs.promises.readFile(filePath, 'utf8');
             const redisKey = `video:${channelName}:playlist`;
 
-            // RATIONALE: The playlist is a rolling manifest that changes every 2 seconds (-hls_time 2).
-            // A 30-second short TTL (EX 30) ensures that if the source streamer crashes or drops out,
-            // the stale manifest expires quickly from the cache, preventing players from entering endless buffering loops.
-            await redis.set(redisKey, playlistContent, 'EX', 30);
+            // RATIONALE: The playlist is a rolling manifest that changes every few seconds.
+            // Configurable TTL (config.playlistTtl) ensures stale manifests expire fast if the source streamer drops.
+            await redis.set(redisKey, playlistContent, 'EX', config.playlistTtl);
             console.log(`[In-Memory Stream] Updated dynamic playlist for ${channelName}`);
         }
     } catch (err) {
@@ -42,17 +40,15 @@ async function processCompletedFile(filePath: string) {
 }
 
 export function startFFmpeg() {
-    const udpPort = process.env.UDP_PORT || '1234';
-
     const args = [
-        '-i', `udp://0.0.0.0:${udpPort}`,
-        '-hls_time', '2',
-        '-hls_list_size', '5',
+        '-i', `udp://0.0.0.0:${config.udpPort}`,
+        '-hls_time', config.hlsTime,
+        '-hls_list_size', config.hlsListSize,
         '-hls_flags', 'delete_segments',
         path.join(outputDir, 'stream.m3u8')
     ];
 
-    console.log(`[${channelName}] Starting high-performance In-Memory FFmpeg pipeline...`);
+    console.log(`[${channelName}] Starting high-performance In-Memory FFmpeg pipeline on UDP port ${config.udpPort}...`);
     const ffmpegProcess = spawn('ffmpeg', args);
 
     ffmpegProcess.stderr.on('data', (data) => {

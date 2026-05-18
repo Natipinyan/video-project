@@ -17,7 +17,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+  // Read VITE_EDGE_URL or fallback to VITE_API_URL for backward compatibility
+  const baseUrl = import.meta.env.VITE_EDGE_URL || import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
     async function fetchChannels() {
@@ -44,14 +45,24 @@ export default function App() {
     if (selectedChannel && videoRef.current) {
       const video = videoRef.current;
       const url = `${baseUrl}/${selectedChannel}/stream.m3u8`;
+      let hls: Hls | null = null;
 
       if (Hls.isSupported()) {
-        const hls = new Hls();
+        hls = new Hls();
         hls.loadSource(url);
         hls.attachMedia(video);
-        return () => hls.destroy();
+
+        // MEMORY LEAK GUARD: Clean up the instance when unmounting or changing channels
+        return () => {
+          if (hls) {
+            hls.destroy();
+          }
+        };
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = url;
+        return () => {
+          video.src = '';
+        };
       }
     }
   }, [selectedChannel, baseUrl]);

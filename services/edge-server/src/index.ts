@@ -2,12 +2,12 @@ import express, { Request, Response } from 'express';
 import Redis from 'ioredis';
 import axios from 'axios';
 import cors from 'cors';
+import { config } from './config';
 
 export const app = express();
-export const redis = new Redis(process.env.REDIS_URL || 'redis://edge-redis:6379');
-const BACKEND_URL = process.env.BACKEND_API_URL || 'http://api:3000';
-const PORT = 8080;
-
+export const redis = new Redis(config.redisUrl);
+const BACKEND_URL = config.backendApiUrl;
+const PORT = config.port;
 
 app.use(cors({
     origin: '*',
@@ -15,7 +15,6 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Range'],
     exposedHeaders: ['Content-Length', 'Content-Range']
 }));
-
 
 const getUpstreamConfig = (additionalConfig = {}) => {
     return {
@@ -72,16 +71,14 @@ app.get('/:channel/:file', async (req: Request, res: Response) => {
 
         const response = await axios.get(
             `${BACKEND_URL}/${channel}/${file}`,
-            getUpstreamConfig({ responseType: 'arraybuffer', timeout: 5000 })
+            getUpstreamConfig({ responseType: 'arraybuffer', timeout: config.axiosTimeout })
         );
 
         const data = Buffer.from(response.data);
 
-        // RATIONALE: A short 10-second cache window (EX 10) at the edge layer prevents hammering
-        // the central Backend API during massive concurrent user playback spikes. It ensures that
-        // even with hundreds of dynamic player clients fetching segments simultaneously, only one upstream
-        // request per 10 seconds hits the source core, while keeping the video practically live.
-        await redis.set(cacheKey, data, 'EX', 10);
+        // RATIONALE: Configurable cache window (EDGE_CACHE_TTL) at the edge layer prevents hammering
+        // the central Backend API during massive concurrent user playback spikes.
+        await redis.set(cacheKey, data, 'EX', config.edgeCacheTtl);
 
         const contentType = response.headers['content-type'];
         res.setHeader('Content-Type', String(contentType));

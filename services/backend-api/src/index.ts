@@ -1,11 +1,12 @@
 import express, { Request, Response, NextFunction } from 'express';
 import Redis from 'ioredis';
 import cors from 'cors';
+import { config } from './config';
 
 const app = express();
-const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
-const PORT = 3000;
 
+const redis = new Redis(config.redisUrl);
+const PORT = config.port;
 
 app.use(cors());
 
@@ -27,7 +28,6 @@ app.get('/health', async (req: Request, res: Response) => {
         return res.status(500).send('Unhealthy');
     }
 });
-
 
 const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
     const internalToken = process.env.INTERNAL_AUTH_TOKEN;
