@@ -119,4 +119,31 @@ describe('Streaming API Tests', () => {
         expect(res.status).toBe(500);
         expect(res.text).toBe('Error');
     });
+    // =========================================================================
+    // 3. DYNAMIC CONFIGURATION TESTS (/channels)
+    // =========================================================================
+    describe('GET /channels', () => {
+        it('should return 200 and the list of available channels with proper schema', async () => {
+            /**
+             * PURPOSE: Verify that the endpoint returns a valid JSON array of channels.
+             * Each channel object must implement the required keys: value, label, description.
+             */
+            const res = await request(app).get('/channels');
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type'].toLowerCase()).toContain('application/json');
+            expect(Array.isArray(res.body)).toBe(true);
+            expect(res.body.length).toBeGreaterThan(0);
+
+            // וולדיציה של המבנה (Schema) של הערוץ הראשון שחוזר
+            const firstChannel = res.body[0];
+            expect(firstChannel).toHaveProperty('value');
+            expect(firstChannel).toHaveProperty('label');
+            expect(firstChannel).toHaveProperty('description');
+
+            // וידוא קל שהערכים הם אכן מחרוזות (strings)
+            expect(typeof firstChannel.value).toBe('string');
+            expect(typeof firstChannel.label).toBe('string');
+        });
+    });
 });

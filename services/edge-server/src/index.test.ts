@@ -75,4 +75,47 @@ describe('Edge Server Cache and Route Tests', () => {
         const cached = await redis.getBuffer('edge:ch1:stream0.ts');
         expect(cached).toBeNull();
     });
+
+    // =========================================================================
+    // 3. DYNAMIC CHANNELS PROXY TESTS (/channels)
+    // =========================================================================
+    describe('GET /channels Proxy Path', () => {
+        it('should successfully proxy channels array from backend-api', async () => {
+            /**
+             * PURPOSE: Ensure the Edge server acts as a clean proxy.
+             * It should call the Backend API channels endpoint and forward the exact JSON data.
+             */
+            const mockBackendChannels = [
+                { value: 'channel1', label: 'Channel 1', description: 'Test 1' },
+                { value: 'channel2', label: 'Channel 2', description: 'Test 2' }
+            ];
+
+            vi.mocked(axios.get).mockResolvedValueOnce({
+                data: mockBackendChannels,
+                headers: { 'content-type': 'application/json' }
+            });
+
+            const res = await request(app).get('/channels');
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type'].toLowerCase()).toContain('application/json');
+            expect(res.body).toEqual(mockBackendChannels);
+
+            // מוודאים שאקסיוס אכן חיפש את הראוט הנכון בבקאנד
+            expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/channels'), expect.any(Object));
+        });
+
+        it('should return 502 Bad Gateway if the backend API fails or is offline', async () => {
+            /**
+             * PURPOSE: Resiliency check. If the central Backend API is down,
+             * the Edge server shouldn't crash; it must return a clear 502 error to the UI.
+             */
+            vi.mocked(axios.get).mockRejectedValueOnce(new Error('Connection refused'));
+
+            const res = await request(app).get('/channels');
+
+            expect(res.status).toBe(502);
+            expect(res.text).toBe('Backend API Unreachable');
+        });
+    });
 });

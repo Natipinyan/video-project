@@ -1,31 +1,45 @@
-version: '3.8'
+
+x-templates:
+  streamer-base: &streamer-template
+    build: services/streamer
+    environment:
+      - RECEIVER_HOST=live-receiver-1
+
+  receiver-base: &receiver-template
+    build: ./services/receiver
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - TS_NODE_TRANSPILE_ONLY=true
+      - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
+    depends_on:
+      redis:
+        condition: service_healthy
 
 services:
 
   # ==========================================
   # THE STREAMERS (Video Sources)
-  # Responsible for generating or streaming the raw video feed.
   # ==========================================
   streamer-1:
-    build: services/streamer-1
+    <<: *streamer-template
     container_name: live-streamer-1
+    command: ["-re", "-i", "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", "-map", "0:v:2", "-map", "0:a:2", "-c", "copy", "-f", "mpegts", "udp://live-receiver-1:1234"]
     depends_on:
       receiver-1:
         condition: service_healthy
 
   streamer-2:
-    build: services/streamer-2
+    <<: *streamer-template
     container_name: live-streamer-2
+    command: ["-re", "-stream_loop", "-1", "-i", "/app/sample2.mp4", "-c:v", "libx264", "-preset", "superfast", "-tune", "zerolatency", "-c:a", "aac", "-f", "mpegts", "udp://live-receiver-2:1235"]
     depends_on:
       receiver-2:
         condition: service_healthy
 
   # ==========================================
   # BASE SITE: SOURCE SITE (Processing & Storage)
-  # Receives, processes (HLS encoding), and stores video data locally.
   # ==========================================
 
-  # Main database for the source site
   redis:
     image: redis:alpine
     container_name: live-redis
@@ -35,42 +49,34 @@ services:
       timeout: 1s
       retries: 3
 
-  # Receivers handle UDP streams and convert them to HLS segments stored in Redis
   receiver-1:
-    build: ./services/receiver
+    <<: *receiver-template
     container_name: live-receiver-1
     environment:
       - REDIS_URL=redis://redis:6379
-      - CHANNEL_NAME=channel1
-      - UDP_PORT=1234
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
+      - CHANNEL_NAME=channel1
+      - UDP_PORT=1234
     volumes:
       - ./hls_out/ch1:/app/hls_out
-    depends_on:
-      redis:
-        condition: service_healthy
     healthcheck:
       test: [ "CMD", "nc", "-zu", "127.0.0.1", "1234" ]
       interval: 3s
       timeout: 1s
       retries: 3
 
-
   receiver-2:
-    build: ./services/receiver
+    <<: *receiver-template
     container_name: live-receiver-2
     environment:
       - REDIS_URL=redis://redis:6379
-      - CHANNEL_NAME=channel2
-      - UDP_PORT=1235
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
+      - CHANNEL_NAME=channel2
+      - UDP_PORT=1235
     volumes:
       - ./hls_out/ch2:/app/hls_out
-    depends_on:
-      redis:
-        condition: service_healthy
     healthcheck:
       test: [ "CMD", "nc", "-zu", "127.0.0.1", "1235" ]
       interval: 3s
@@ -79,7 +85,6 @@ services:
 
   # ==========================================
   # THE SOURCE GATEWAY: BACKEND API
-  # Exposes video segments and playlists from the Source Redis to distribution sites.
   # ==========================================
   api:
     build: services/backend-api
@@ -101,10 +106,8 @@ services:
 
   # ==========================================
   # REGULAR SITE: DISTRIBUTION SITE (Edge & UI)
-  # Handles high traffic by caching content and serving the Web UI.
   # ==========================================
 
-  # Distribution server that caches content to reduce load on the core Backend API
   edge-server:
     build: ./services/edge-server
     container_name: live-edge-server
@@ -126,7 +129,6 @@ services:
       timeout: 2s
       retries: 3
 
-  # Local Redis for the Edge site to store cached segments/playlists
   edge-redis:
     image: redis:alpine
     container_name: edge-redis
@@ -136,7 +138,6 @@ services:
       timeout: 1s
       retries: 3
 
-  # React + Vite application that interacts only with the Edge Server (Frontend Client)
   web-ui:
     build: ./services/web-ui
     container_name: live-web-ui
