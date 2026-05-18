@@ -101,7 +101,6 @@ describe('Edge Server Cache and Route Tests', () => {
             expect(res.headers['content-type'].toLowerCase()).toContain('application/json');
             expect(res.body).toEqual(mockBackendChannels);
 
-            // מוודאים שאקסיוס אכן חיפש את הראוט הנכון בבקאנד
             expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/channels'), expect.any(Object));
         });
 
