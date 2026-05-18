@@ -70,7 +70,6 @@ app.get('/:channel/:file', async (req: Request, res: Response) => {
             return res.send(cachedData);
         }
 
-        // פנייה מאובטחת לקבלת סגמנטים/מניפסט עם ה-Token
         const response = await axios.get(
             `${BACKEND_URL}/${channel}/${file}`,
             getUpstreamConfig({ responseType: 'arraybuffer', timeout: 5000 })
@@ -78,6 +77,10 @@ app.get('/:channel/:file', async (req: Request, res: Response) => {
 
         const data = Buffer.from(response.data);
 
+        // RATIONALE: A short 10-second cache window (EX 10) at the edge layer prevents hammering
+        // the central Backend API during massive concurrent user playback spikes. It ensures that
+        // even with hundreds of dynamic player clients fetching segments simultaneously, only one upstream
+        // request per 10 seconds hits the source core, while keeping the video practically live.
         await redis.set(cacheKey, data, 'EX', 10);
 
         const contentType = response.headers['content-type'];

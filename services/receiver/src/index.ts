@@ -12,13 +12,16 @@ if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
 
-
 async function processCompletedFile(filePath: string) {
     const fileName = path.basename(filePath);
     try {
         if (fileName.endsWith('.ts')) {
             const fileContent = await fs.promises.readFile(filePath);
             const redisKey = `video:${channelName}:seg:${fileName}`;
+
+            // RATIONALE: Media segments are immutable but high in bandwidth/memory.
+            // A 10-minute sliding window (EX 600) provides sufficient buffering history
+            // for late-joining edge servers or dynamic client DVR scrubbing without overflowing Redis memory.
             await redis.set(redisKey, fileContent, 'EX', 600);
             console.log(`[In-Memory Stream] Successfully cached segment ${fileName} for ${channelName}`);
 
@@ -26,6 +29,10 @@ async function processCompletedFile(filePath: string) {
         } else if (fileName.endsWith('.m3u8')) {
             const playlistContent = await fs.promises.readFile(filePath, 'utf8');
             const redisKey = `video:${channelName}:playlist`;
+
+            // RATIONALE: The playlist is a rolling manifest that changes every 2 seconds (-hls_time 2).
+            // A 30-second short TTL (EX 30) ensures that if the source streamer crashes or drops out,
+            // the stale manifest expires quickly from the cache, preventing players from entering endless buffering loops.
             await redis.set(redisKey, playlistContent, 'EX', 30);
             console.log(`[In-Memory Stream] Updated dynamic playlist for ${channelName}`);
         }

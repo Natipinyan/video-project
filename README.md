@@ -292,3 +292,23 @@ Run in detached mode:
 ```bash
 docker compose up -d --build
 ```
+
+---
+
+# Operational Procedures
+
+## How to Add a New Channel
+Thanks to our consolidated service images and YAML configuration templates, scaling the pipeline to add a new streaming channel requires updates in only **3 architectural locations**:
+
+1. **Register the Streamer (`docker-compose.yml`):** Define a new streamer service block using the native extension anchor `<<: *streamer-template`. Provide its unique container identity and customize the target execution destination parameters inside the `command` array.
+2. **Provision the Receiver (`docker-compose.yml`):** Define a paired receiver service block using the extension template `<<: *receiver-template`. Provide its unique internal `CHANNEL_NAME`, declare its mapped inbound `UDP_PORT`, and configure an automated network port availability verification check (`nc -zu`).
+3. **Frontend Application Registry (`services/web-ui/src/App.tsx`):** Append the new channel identifier string token directly into the available UI channel arrays to dynamically render and expose navigation components inside the user control matrix.
+
+---
+
+## How to Reset System State
+If a pipeline enters an unstable state or you need to clear memory caches cleanly:
+
+1. Stop the active stack and completely wipe all transient volumes and network buffers:
+   ```bash
+   docker compose down -v
