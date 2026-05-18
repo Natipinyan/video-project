@@ -24,21 +24,24 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install Dependencies & Typecheck
+      - name: Install Monorepo Dependencies
+        run: npm ci
+
+      - name: Typecheck Service
         run: |
-          if [ -f "./services/${{ matrix.service }}/package.json" ]; then
+          if [ -f "./services/${{ matrix.service }}/tsconfig.json" ]; then
             cd ./services/${{ matrix.service }}
-            npm ci
-            if npm error-on-missing run | grep -q "build" || [ -f "./tsconfig.json" ]; then
-              npx tsc --noEmit || echo "No compiler setup or passed"
-            fi
-            if grep -q '"test"' package.json; then
-              npm test || exit 1
-            else
-              echo "::warning::No test script found for ${{ matrix.service }}"
-            fi
+            npx tsc --noEmit
           else
-            echo "Non-Node service, skipping JS validation."
+            echo "No tsconfig.json found for ${{ matrix.service }}, skipping typecheck."
+          fi
+
+      - name: Run Service Tests
+        run: |
+          if grep -q '"test"' ./services/${{ matrix.service }}/package.json; then
+            npm test --workspace=services/${{ matrix.service }} || exit 1
+          else
+            echo "::warning::No test script found for ${{ matrix.service }}"
           fi
 
   build-docker-test:
