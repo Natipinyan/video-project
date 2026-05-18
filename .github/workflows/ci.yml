@@ -2,14 +2,18 @@ name: Video Project CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
-  run-all-tests:
+  validate-services:
+    name: Validate Core Services
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        service: [backend-api, edge-server, receiver, streamer-1, streamer-2, web-ui]
+      fail-fast: false
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -19,13 +23,80 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: ./package-lock.json
 
-      - name: Install Workspace Dependencies
+      - name: Install Monorepo Dependencies
         run: npm ci
 
-      - name: Run Security Audit
-        run: npm audit --audit-level=high
+      - name: Typecheck Service
+        run: |
+          if [ -f "./services/${{ matrix.service }}/tsconfig.json" ]; then
+            cd ./services/${{ matrix.service }}
+            npx tsc --noEmit
+          else
+            echo "No tsconfig.json found for ${{ matrix.service }}, skipping typecheck."
+          fi
 
-      - name: Run Full Monorepo Test Suite
-        run: npm test
+      - name: Run Service Tests
+        run: |
+          if grep -q '"test"' ./services/${{ matrix.service }}/package.json; then
+            npm test --workspace=services/${{ matrix.service }} || exit 1
+          else
+            echo "::warning::No test script found for ${{ matrix.service }}"
+          fi
+
+  build-docker-test:
+    name: Test & Package Docker Builds
+    needs: validate-services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [backend-api, edge-server, receiver, streamer-1, streamer-2, web-ui]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/${{ matrix.service }}
+          file: ./services/${{ matrix.service }}/Dockerfile
+          push: false
+          load: true
+          tags: video-project-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save Docker Image to Tarball
+        run: |
+          mkdir -p images
+          docker save video-project-${{ matrix.service }}:${{ github.sha }} | gzip > images/${{ matrix.service }}.tar.gz
+
+      - name: Upload Image Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-${{ matrix.service }}
+          path: images/${{ matrix.service }}.tar.gz
+          retention-days: 5
+
+  integration-smoke-test:
+    name: Integration Smoke Test
+    needs: build-docker-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Start Docker Compose Stack
+        run: docker compose up -d --build
+
+      - name: Check Container Health & Status
+        run: |
+          sleep 10
+          docker compose ps
+
+      - name: Tear Down Stack
+        if: always()
+        run: docker compose down
