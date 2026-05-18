@@ -45,7 +45,7 @@ jobs:
           fi
 
   build-docker-test:
-    name: Test Docker Builds
+    name: Test & Package Docker Builds
     needs: validate-services
     runs-on: ubuntu-latest
     strategy:
@@ -58,14 +58,28 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker Image (Dry Run)
+      - name: Build Docker Image
         uses: docker/build-push-action@v5
         with:
           context: ./services/${{ matrix.service }}
           file: ./services/${{ matrix.service }}/Dockerfile
           push: false
           load: true
-          tags: video-project/${{ matrix.service }}:test
+          tags: video-project-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save Docker Image to Tarball
+        run: |
+          mkdir -p images
+          docker save video-project-${{ matrix.service }}:${{ github.sha }} | gzip > images/${{ matrix.service }}.tar.gz
+
+      - name: Upload Image Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-${{ matrix.service }}
+          path: images/${{ matrix.service }}.tar.gz
+          retention-days: 5
 
   integration-smoke-test:
     name: Integration Smoke Test
