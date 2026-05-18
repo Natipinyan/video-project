@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [backend-api, edge-server, receiver, streamer-1, streamer-2, web-ui]
+        service: [backend-api, edge-server, receiver, streamer, web-ui]
       fail-fast: false
     steps:
       - name: Checkout Code
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [backend-api, edge-server, receiver, streamer-1, streamer-2, web-ui]
+        service: [backend-api, edge-server, receiver, streamer, web-ui]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

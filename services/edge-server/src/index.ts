@@ -32,6 +32,18 @@ app.get('/health', async (req: Request, res: Response) => {
     }
 });
 
+// Route to proxy channels list from Backend to Web UI
+app.get('/channels', async (req: Request, res: Response) => {
+    try {
+        const response = await axios.get(`${BACKEND_URL}/channels`, { timeout: 3000 });
+        return res.status(200).json(response.data);
+    } catch (err: any) {
+        console.error(`[EDGE CHANNELS FETCH FAILED]: ${err.message}`);
+        return res.status(502).send('Backend API Unreachable');
+    }
+});
+
+//Route get file
 app.get('/:channel/:file', async (req: Request, res: Response) => {
     const { channel, file } = req.params as { channel: string; file: string };
     const cacheKey = `edge:${channel}:${file}`;

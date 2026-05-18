@@ -29,6 +29,15 @@ app.get('/health', async (req: Request, res: Response) => {
     }
 });
 
+// Route to fetch dynamic channels list
+app.get('/channels', (req: Request, res: Response) => {
+    const channels = [
+        { value: 'channel1', label: 'Channel 1', description: 'Live Feed from Streamer 1' },
+        { value: 'channel2', label: 'Channel 2', description: 'Live Feed from Streamer 2' },
+    ];
+    return res.status(200).json(channels);
+});
+
 // Route for M3U8 Playlist
 app.get('/:channel/stream.m3u8', async (req: Request, res: Response) => {
     const { channel } = req.params;

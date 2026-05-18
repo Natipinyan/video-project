@@ -1,24 +1,48 @@
 import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
-import { Monitor, ArrowLeft, PlayCircle } from "lucide-react";
+import { Monitor, ArrowLeft, PlayCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent } from "@/components/ui/card";
 
-export const streams = [
-  { value: "channel1", label: "Channel 1", description: "Main Network Feed" },
-  { value: "channel2", label: "Channel 2", description: "Local Storage Stream" },
-];
+interface Channel {
+  value: string;
+  label: string;
+  description: string;
+}
 
 export default function App() {
+  const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
+  useEffect(() => {
+    async function fetchChannels() {
+      try {
+        setLoading(true);
+        const response = await fetch(`${baseUrl}/channels`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch channels from server');
+        }
+        const data = await response.json();
+        setChannels(data);
+      } catch (err: any) {
+        console.error("[FETCH CHANNELS ERROR]:", err.message);
+        setError("Could not load channels. Please check connection.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchChannels();
+  }, [baseUrl]);
 
   useEffect(() => {
     if (selectedChannel && videoRef.current) {
       const video = videoRef.current;
-
-      // תיקון הבאג: שימוש במשתנה סביבה כפי שנדרש בדו"ח
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
       const url = `${baseUrl}/${selectedChannel}/stream.m3u8`;
 
       if (Hls.isSupported()) {
@@ -30,7 +54,30 @@ export default function App() {
         video.src = url;
       }
     }
-  }, [selectedChannel]);
+  }, [selectedChannel, baseUrl]);
+
+  if (loading) {
+    return (
+        <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col items-center justify-center font-sans">
+          <Loader2 className="w-12 h-12 text-red-600 animate-spin mb-4" />
+          <p className="text-zinc-400">Loading dynamic configurations...</p>
+        </div>
+    );
+  }
+
+  if (error) {
+    return (
+        <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col items-center justify-center p-4 text-center font-sans">
+          <div className="max-w-md bg-zinc-900 border border-zinc-800 p-8 rounded-2xl shadow-xl space-y-4">
+            <h2 className="text-2xl font-bold text-red-500">Connection Error</h2>
+            <p className="text-zinc-400">{error}</p>
+            <Button onClick={() => window.location.reload()} className="bg-red-600 hover:bg-red-700">
+              Retry Connection
+            </Button>
+          </div>
+        </div>
+    );
+  }
 
   if (!selectedChannel) {
     return (
@@ -38,11 +85,11 @@ export default function App() {
           <div className="max-w-4xl w-full space-y-12">
             <div className="text-center space-y-4">
               <h1 className="text-5xl font-extrabold tracking-tighter italic">CHANNELS</h1>
-              <p className="text-zinc-500 text-lg">Select a feed to broadcast</p>
+              <p className="text-zinc-500 text-lg">Select a feed to broadcast (Config-Driven)</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {streams.map((stream) => (
+              {channels.map((stream) => (
                   <Card
                       key={stream.value}
                       data-testid={`channel-card-${stream.value}`}
@@ -85,7 +132,7 @@ export default function App() {
 
           <div className="flex items-center space-x-3 uppercase tracking-widest text-xs font-bold text-white bg-black/40 px-4 py-2 rounded-full backdrop-blur-md border border-white/10">
             <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse" />
-            <span>LIVE: {streams.find(s => s.value === selectedChannel)?.label}</span>
+            <span>LIVE: {channels.find(s => s.value === selectedChannel)?.label}</span>
           </div>
         </div>
 
