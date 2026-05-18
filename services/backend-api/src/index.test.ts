@@ -19,6 +19,9 @@ vi.mock('ioredis', () => {
                 if (shouldThrowError) return Promise.reject(new Error('Redis Buffer Error'));
                 return Promise.resolve(mockGetBufferValue);
             }
+            ping() {
+                return Promise.resolve('PONG');
+            }
             on() { return this; }
         }
     };
@@ -26,97 +29,138 @@ vi.mock('ioredis', () => {
 
 import app from './index';
 
-describe('Streaming API Tests', () => {
+describe('Streaming API Tests (Secured Interservice Pipeline)', () => {
+    const MOCK_SECRET_TOKEN = 'backend-test-secret-123';
 
     beforeEach(() => {
         mockGetValue = null;
         mockGetBufferValue = null;
         shouldThrowError = false;
+
+        process.env.INTERNAL_AUTH_TOKEN = MOCK_SECRET_TOKEN;
     });
 
     // =========================================================================
-    // 1. PLAYLIST ROUTE TESTS (.m3u8)
+    // 0. SECURITY & AUTHENTICATION BOUNDARY TESTS
     // =========================================================================
+    describe('Authentication Middleware Enforcement', () => {
+        it('should block requests and return 401 Unauthorized if X-Relay-Token header is missing', async () => {
+            const res = await request(app).get('/channels'); // בקשה "ערומה" ללא הדר
+            expect(res.status).toBe(401);
+            expect(res.text).toContain('Unauthorized');
+        });
 
-    it('should return 404 for unknown channel', async () => {
-        /**
-         * PURPOSE: Test that requesting an HLS playlist for a channel
-         * that does not exist in Redis correctly results in a 404 Not Found error.
-         */
-        const res = await request(app).get('/unknown/stream.m3u8');
-        expect(res.status).toBe(404);
-    });
+        it('should block requests and return 401 Unauthorized if X-Relay-Token is invalid', async () => {
+            const res = await request(app)
+                .get('/channels')
+                .set('X-Relay-Token', 'wrong-intruder-token'); // הדר שגוי
+            expect(res.status).toBe(401);
+        });
 
-    it('should return 200 and the playlist content when it exists in Redis', async () => {
-        /**
-         * PURPOSE: Test the successful path where the playlist is found in Redis.
-         * The API should return status 200, the playlist text, and the correct
-         * HLS content-type header (case-insensitive check).
-         */
-        const fakePlaylist = '#EXTM3U\n#EXT-X-TARGETDURATION:2\nstream0.ts';
-        mockGetValue = fakePlaylist;
-
-        const res = await request(app).get('/channel1/stream.m3u8');
-
-        expect(res.status).toBe(200);
-        expect(res.headers['content-type'].toLowerCase()).toContain('application/x-mpegurl');
-        expect(res.text).toBe(fakePlaylist);
-    });
-
-    it('should return 500 when Redis fails on playlist fetch', async () => {
-        /**
-         * PURPOSE: Test error handling resiliency. When the Redis server connection
-         * fails or throws an exception, the API's try/catch block must catch it,
-         * prevent the server from crashing, and safely respond with a 500 Internal Error.
-         */
-        shouldThrowError = true;
-
-        const res = await request(app).get('/channel1/stream.m3u8');
-
-        expect(res.status).toBe(500);
-        expect(res.text).toBe('Error');
+        it('should allow public access to /health without any authentication headers', async () => {
+            /**
+             * PURPOSE: Ensure Docker/Kubernetes health probes do not fail.
+             * The /health route must skip the Auth Middleware.
+             */
+            const res = await request(app).get('/health');
+            expect(res.status).toBe(200);
+            expect(res.text).toBe('OK');
+        });
     });
 
     // =========================================================================
-    // 2. VIDEO SEGMENT ROUTE TESTS (.ts)
+    // 1. PLAYLIST ROUTE TESTS (.m3u8) - With Valid Credentials
     // =========================================================================
+    describe('GET /:channel/stream.m3u8', () => {
+        it('should return 404 for unknown channel when authenticated', async () => {
+            const res = await request(app)
+                .get('/unknown/stream.m3u8')
+                .set('X-Relay-Token', MOCK_SECRET_TOKEN);
+            expect(res.status).toBe(404);
+        });
 
-    it('should return 404 when video segment is not found', async () => {
-        /**
-         * PURPOSE: Test that requesting a specific TS video segment that is missing
-         * or expired from Redis correctly returns a 404 Not Found status.
-         */
-        const res = await request(app).get('/channel1/stream0.ts');
-        expect(res.status).toBe(404);
+        it('should return 200 and the playlist content when authorized', async () => {
+            const fakePlaylist = '#EXTM3U\n#EXT-X-TARGETDURATION:2\nstream0.ts';
+            mockGetValue = fakePlaylist;
+
+            const res = await request(app)
+                .get('/channel1/stream.m3u8')
+                .set('X-Relay-Token', MOCK_SECRET_TOKEN);
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type'].toLowerCase()).toContain('application/x-mpegurl');
+            expect(res.text).toBe(fakePlaylist);
+        });
+
+        it('should return 500 when Redis fails on playlist fetch even if authenticated', async () => {
+            shouldThrowError = true;
+
+            const res = await request(app)
+                .get('/channel1/stream.m3u8')
+                .set('X-Relay-Token', MOCK_SECRET_TOKEN);
+
+            expect(res.status).toBe(500);
+            expect(res.text).toBe('Error');
+        });
     });
 
-    it('should return 200 and video buffer with correct content-type when segment exists', async () => {
-        /**
-         * PURPOSE: Test the successful delivery of video stream files.
-         * The API must read the binary data buffer from Redis, serve it with a
-         * 'video/mp2t' content-type header, and deliver the exact unmodified buffer.
-         */
-        const fakeVideoBuffer = Buffer.from('fake-mpegts-binary-data');
-        mockGetBufferValue = fakeVideoBuffer;
+    // =========================================================================
+    // 2. VIDEO SEGMENT ROUTE TESTS (.ts) - With Valid Credentials
+    // =========================================================================
+    describe('GET /:channel/:segment', () => {
+        it('should return 404 when video segment is not found but authenticated', async () => {
+            const res = await request(app)
+                .get('/channel1/stream0.ts')
+                .set('X-Relay-Token', MOCK_SECRET_TOKEN);
+            expect(res.status).toBe(404);
+        });
 
-        const res = await request(app).get('/channel1/stream0.ts');
+        it('should return 200 and video buffer when segment exists and authorized', async () => {
+            const fakeVideoBuffer = Buffer.from('fake-mpegts-binary-data');
+            mockGetBufferValue = fakeVideoBuffer;
 
-        expect(res.status).toBe(200);
-        expect(res.headers['content-type'].toLowerCase()).toContain('video/mp2t');
-        expect(res.body).toEqual(fakeVideoBuffer);
+            const res = await request(app)
+                .get('/channel1/stream0.ts')
+                .set('X-Relay-Token', MOCK_SECRET_TOKEN);
+
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type'].toLowerCase()).toContain('video/mp2t');
+            expect(res.body).toEqual(fakeVideoBuffer);
+        });
+
+        it('should return 500 when Redis fails on segment fetch even if authenticated', async () => {
+            shouldThrowError = true;
+
+            const res = await request(app)
+                .get('/channel1/stream0.ts')
+                .set('X-Relay-Token', MOCK_SECRET_TOKEN);
+
+            expect(res.status).toBe(500);
+            expect(res.text).toBe('Error');
+        });
     });
 
-    it('should return 500 when Redis fails on segment fetch', async () => {
-        /**
-         * PURPOSE: Test error handling for binary video fetches. If Redis drops
-         * the connection mid-request or errors out while fetching a segment buffer,
-         * the route's catch block must capture the error and return a 500 status.
-         */
-        shouldThrowError = true;
+    // =========================================================================
+    // 3. DYNAMIC CONFIGURATION TESTS (/channels) - With Valid Credentials
+    // =========================================================================
+    describe('GET /channels', () => {
+        it('should return 200 and the list of available channels with proper schema when authorized', async () => {
+            const res = await request(app)
+                .get('/channels')
+                .set('X-Relay-Token', MOCK_SECRET_TOKEN);
 
-        const res = await request(app).get('/channel1/stream0.ts');
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type'].toLowerCase()).toContain('application/json');
+            expect(Array.isArray(res.body)).toBe(true);
+            expect(res.body.length).toBeGreaterThan(0);
 
-        expect(res.status).toBe(500);
-        expect(res.text).toBe('Error');
+            const firstChannel = res.body[0];
+            expect(firstChannel).toHaveProperty('value');
+            expect(firstChannel).toHaveProperty('label');
+            expect(firstChannel).toHaveProperty('description');
+
+            expect(typeof firstChannel.value).toBe('string');
+            expect(typeof firstChannel.label).toBe('string');
+        });
     });
 });

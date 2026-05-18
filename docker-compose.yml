@@ -1,31 +1,53 @@
-version: '3.8'
+x-templates:
+  streamer-base: &streamer-template
+    build: services/streamer
+
+  receiver-base: &receiver-template
+    build: ./services/receiver
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - TS_NODE_TRANSPILE_ONLY=true
+      - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
+      - OUTPUT_DIR=${OUTPUT_DIR:-/dev/shm/hls_out}
+      - HLS_SEGMENT_SECONDS=${HLS_SEGMENT_SECONDS:-2}
+      - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
+      - HLS_SEGMENT_TTL=${HLS_SEGMENT_TTL:-600}
+      - HLS_PLAYLIST_TTL=${HLS_PLAYLIST_TTL:-30}
+    depends_on:
+      redis:
+        condition: service_healthy
 
 services:
 
   # ==========================================
   # THE STREAMERS (Video Sources)
-  # Responsible for generating or streaming the raw video feed.
   # ==========================================
   streamer-1:
-    build: services/streamer-1
+    <<: *streamer-template
     container_name: live-streamer-1
+    command: >
+      -re -i https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8 
+      -map 0:v:2 -map 0:a:2 -c copy -f mpegts 
+      udp://${RECEIVER_1_HOST:-live-receiver-1}:${RECEIVER_1_UDP_PORT:-1234}
     depends_on:
       receiver-1:
         condition: service_healthy
 
   streamer-2:
-    build: services/streamer-2
+    <<: *streamer-template
     container_name: live-streamer-2
+    command: >
+      -re -stream_loop -1 -i /app/sample2.mp4 
+      -c:v libx264 -preset superfast -tune zerolatency -c:a aac -f mpegts 
+      udp://${RECEIVER_2_HOST:-live-receiver-2}:${RECEIVER_2_UDP_PORT:-1235}
     depends_on:
       receiver-2:
         condition: service_healthy
 
   # ==========================================
   # BASE SITE: SOURCE SITE (Processing & Storage)
-  # Receives, processes (HLS encoding), and stores video data locally.
   # ==========================================
 
-  # Main database for the source site
   redis:
     image: redis:alpine
     container_name: live-redis
@@ -35,98 +57,98 @@ services:
       timeout: 1s
       retries: 3
 
-  # Receivers handle UDP streams and convert them to HLS segments stored in Redis
   receiver-1:
-    build: ./services/receiver
+    <<: *receiver-template
     container_name: live-receiver-1
     environment:
-      - REDIS_URL=redis://redis:6379
-      - CHANNEL_NAME=channel1
-      - UDP_PORT=1234
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
-    volumes:
-      - ./hls_out/ch1:/app/hls_out
-    depends_on:
-      redis:
-        condition: service_healthy
+      - CHANNEL_NAME=channel1
+      - UDP_PORT=${RECEIVER_1_UDP_PORT:-1234}
+      - OUTPUT_DIR=${OUTPUT_DIR:-/dev/shm/hls_out}
+      - HLS_SEGMENT_SECONDS=${HLS_SEGMENT_SECONDS:-2}
+      - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
+      - HLS_SEGMENT_TTL=${HLS_SEGMENT_TTL:-600}
+      - HLS_PLAYLIST_TTL=${HLS_PLAYLIST_TTL:-30}
     healthcheck:
-      test: [ "CMD", "nc", "-zu", "127.0.0.1", "1234" ]
+      test: [ "CMD", "nc", "-zu", "127.0.0.1", "${RECEIVER_1_UDP_PORT:-1234}" ]
       interval: 3s
       timeout: 1s
       retries: 3
 
-
   receiver-2:
-    build: ./services/receiver
+    <<: *receiver-template
     container_name: live-receiver-2
     environment:
-      - REDIS_URL=redis://redis:6379
-      - CHANNEL_NAME=channel2
-      - UDP_PORT=1235
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
-    volumes:
-      - ./hls_out/ch2:/app/hls_out
-    depends_on:
-      redis:
-        condition: service_healthy
+      - CHANNEL_NAME=channel2
+      - UDP_PORT=${RECEIVER_2_UDP_PORT:-1235}
+      - OUTPUT_DIR=${OUTPUT_DIR:-/dev/shm/hls_out}
+      - HLS_SEGMENT_SECONDS=${HLS_SEGMENT_SECONDS:-2}
+      - HLS_LIST_SIZE=${HLS_LIST_SIZE:-5}
+      - HLS_SEGMENT_TTL=${HLS_SEGMENT_TTL:-600}
+      - HLS_PLAYLIST_TTL=${HLS_PLAYLIST_TTL:-30}
     healthcheck:
-      test: [ "CMD", "nc", "-zu", "127.0.0.1", "1235" ]
+      test: [ "CMD", "nc", "-zu", "127.0.0.1", "${RECEIVER_2_UDP_PORT:-1235}" ]
       interval: 3s
       timeout: 1s
       retries: 3
 
   # ==========================================
   # THE SOURCE GATEWAY: BACKEND API
-  # Exposes video segments and playlists from the Source Redis to distribution sites.
   # ==========================================
   api:
     build: services/backend-api
     container_name: live-api
     environment:
-      - REDIS_URL=redis://redis:6379
+      - PORT=${API_PORT:-3000}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
+      - INTERNAL_AUTH_TOKEN=${INTERNAL_AUTH_TOKEN:-live-secure-relay-token-2026}
     ports:
-      - "3000:3000"
+      - "${API_PORT:-3000}:${API_PORT:-3000}"
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:${API_PORT:-3000}/health"]
       interval: 5s
       timeout: 2s
       retries: 3
 
   # ==========================================
   # REGULAR SITE: DISTRIBUTION SITE (Edge & UI)
-  # Handles high traffic by caching content and serving the Web UI.
   # ==========================================
 
-  # Distribution server that caches content to reduce load on the core Backend API
   edge-server:
     build: ./services/edge-server
     container_name: live-edge-server
     environment:
-      - REDIS_URL=redis://edge-redis:6379
-      - BACKEND_API_URL=http://api:3000
+      - PORT=${EDGE_PORT:-8080}
+      - REDIS_URL=${EDGE_REDIS_URL:-redis://edge-redis:6379}
+      - BACKEND_API_URL=${BACKEND_API_URL:-http://api:3000}
+      - AXIOS_TIMEOUT=${AXIOS_TIMEOUT:-5000}
+      - EDGE_CACHE_TTL=${EDGE_CACHE_TTL:-10}
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
+      - INTERNAL_AUTH_TOKEN=${INTERNAL_AUTH_TOKEN:-live-secure-relay-token-2026}
     ports:
-      - "8080:8080"
+      - "${EDGE_PORT:-8080}:${EDGE_PORT:-8080}"
     depends_on:
       api:
         condition: service_healthy
       edge-redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:${EDGE_PORT:-8080}/health"]
       interval: 5s
       timeout: 2s
       retries: 3
 
-  # Local Redis for the Edge site to store cached segments/playlists
   edge-redis:
     image: redis:alpine
     container_name: edge-redis
@@ -136,14 +158,14 @@ services:
       timeout: 1s
       retries: 3
 
-  # React + Vite application that interacts only with the Edge Server (Frontend Client)
   web-ui:
     build: ./services/web-ui
     container_name: live-web-ui
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:8080
+      - VITE_EDGE_URL=${VITE_EDGE_URL:-http://localhost:8080}
+      - VITE_API_URL=${VITE_EDGE_URL:-http://localhost:8080}
     depends_on:
       edge-server:
         condition: service_healthy

@@ -1,15 +1,15 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import Redis from 'ioredis';
 import cors from 'cors';
+import { config } from './config';
 
 const app = express();
-const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
-const PORT = 3000;
+
+const redis = new Redis(config.redisUrl);
+const PORT = config.port;
 
 app.use(cors());
 
-
-// Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
     try {
         const pingPromise = redis.ping();
@@ -27,6 +27,35 @@ app.get('/health', async (req: Request, res: Response) => {
         console.error(`[HEALTHCHECK FAILED]: ${err}`);
         return res.status(500).send('Unhealthy');
     }
+});
+
+const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    const internalToken = process.env.INTERNAL_AUTH_TOKEN;
+
+    if (!internalToken) {
+        console.error('[SECURITY ALERT] INTERNAL_AUTH_TOKEN is not configured in env! Rejecting all traffic.');
+        return res.status(500).send('Security configuration error');
+    }
+
+    const clientToken = req.headers['x-relay-token'];
+
+    if (!clientToken || clientToken !== internalToken) {
+        console.warn(`[UNAUTHORIZED ACCESS ATTEMPT] Blocked request from IP ${req.ip} to ${req.path}`);
+        return res.status(401).send('Unauthorized: Invalid or missing relay token');
+    }
+
+    next();
+};
+
+app.use(authMiddleware);
+
+// Route to fetch dynamic channels list
+app.get('/channels', (req: Request, res: Response) => {
+    const channels = [
+        { value: 'channel1', label: 'Channel 1', description: 'Live Feed from Streamer 1' },
+        { value: 'channel2', label: 'Channel 2', description: 'Live Feed from Streamer 2' },
+    ];
+    return res.status(200).json(channels);
 });
 
 // Route for M3U8 Playlist
@@ -72,6 +101,6 @@ export default app;
 
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, () => {
-        console.log(`Backend API (No Cache) is running on port ${PORT}`);
+        console.log(`Backend API (Secured via Shared Secret) is running on port ${PORT}`);
     });
 }
