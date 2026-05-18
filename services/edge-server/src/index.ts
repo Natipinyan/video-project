@@ -8,12 +8,23 @@ export const redis = new Redis(process.env.REDIS_URL || 'redis://edge-redis:6379
 const BACKEND_URL = process.env.BACKEND_API_URL || 'http://api:3000';
 const PORT = 8080;
 
+
 app.use(cors({
     origin: '*',
     methods: ['GET', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Range'],
     exposedHeaders: ['Content-Length', 'Content-Range']
 }));
+
+
+const getUpstreamConfig = (additionalConfig = {}) => {
+    return {
+        ...additionalConfig,
+        headers: {
+            'X-Relay-Token': process.env.INTERNAL_AUTH_TOKEN || ''
+        }
+    };
+};
 
 // Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
@@ -23,7 +34,7 @@ app.get('/health', async (req: Request, res: Response) => {
             throw new Error('Local Edge Redis did not respond with PONG');
         }
 
-        await axios.get(`${BACKEND_URL}/health`, { timeout: 2000 });
+        await axios.get(`${BACKEND_URL}/health`, getUpstreamConfig({ timeout: 2000 }));
 
         return res.status(200).send('OK');
     } catch (err: any) {
@@ -35,15 +46,18 @@ app.get('/health', async (req: Request, res: Response) => {
 // Route to proxy channels list from Backend to Web UI
 app.get('/channels', async (req: Request, res: Response) => {
     try {
-        const response = await axios.get(`${BACKEND_URL}/channels`, { timeout: 3000 });
+        const response = await axios.get(`${BACKEND_URL}/channels`, getUpstreamConfig({ timeout: 3000 }));
         return res.status(200).json(response.data);
     } catch (err: any) {
         console.error(`[EDGE CHANNELS FETCH FAILED]: ${err.message}`);
+        if (err.response && err.response.status === 401) {
+            return res.status(403).send('Forbidden: Edge Server authentication with upstream failed');
+        }
         return res.status(502).send('Backend API Unreachable');
     }
 });
 
-//Route get file
+// Route get file
 app.get('/:channel/:file', async (req: Request, res: Response) => {
     const { channel, file } = req.params as { channel: string; file: string };
     const cacheKey = `edge:${channel}:${file}`;
@@ -56,10 +70,11 @@ app.get('/:channel/:file', async (req: Request, res: Response) => {
             return res.send(cachedData);
         }
 
-        const response = await axios.get(`${BACKEND_URL}/${channel}/${file}`, {
-            responseType: 'arraybuffer',
-            timeout: 5000
-        });
+        // פנייה מאובטחת לקבלת סגמנטים/מניפסט עם ה-Token
+        const response = await axios.get(
+            `${BACKEND_URL}/${channel}/${file}`,
+            getUpstreamConfig({ responseType: 'arraybuffer', timeout: 5000 })
+        );
 
         const data = Buffer.from(response.data);
 
