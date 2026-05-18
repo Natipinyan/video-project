@@ -1,9 +1,6 @@
-
 x-templates:
   streamer-base: &streamer-template
     build: services/streamer
-    environment:
-      - RECEIVER_HOST=live-receiver-1
 
   receiver-base: &receiver-template
     build: ./services/receiver
@@ -89,6 +86,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
+      - INTERNAL_AUTH_TOKEN=live-secure-relay-token-2026
     ports:
       - "3000:3000"
     depends_on:
@@ -112,6 +110,7 @@ services:
       - BACKEND_API_URL=http://api:3000
       - TS_NODE_TRANSPILE_ONLY=true
       - TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}
+      - INTERNAL_AUTH_TOKEN=live-secure-relay-token-2026
     ports:
       - "8080:8080"
     depends_on:

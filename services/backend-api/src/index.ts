@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import Redis from 'ioredis';
 import cors from 'cors';
 
@@ -6,10 +6,9 @@ const app = express();
 const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
 const PORT = 3000;
 
+
 app.use(cors());
 
-
-// Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
     try {
         const pingPromise = redis.ping();
@@ -28,6 +27,27 @@ app.get('/health', async (req: Request, res: Response) => {
         return res.status(500).send('Unhealthy');
     }
 });
+
+
+const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    const internalToken = process.env.INTERNAL_AUTH_TOKEN;
+
+    if (!internalToken) {
+        console.error('[SECURITY ALERT] INTERNAL_AUTH_TOKEN is not configured in env! Rejecting all traffic.');
+        return res.status(500).send('Security configuration error');
+    }
+
+    const clientToken = req.headers['x-relay-token'];
+
+    if (!clientToken || clientToken !== internalToken) {
+        console.warn(`[UNAUTHORIZED ACCESS ATTEMPT] Blocked request from IP ${req.ip} to ${req.path}`);
+        return res.status(401).send('Unauthorized: Invalid or missing relay token');
+    }
+
+    next();
+};
+
+app.use(authMiddleware);
 
 // Route to fetch dynamic channels list
 app.get('/channels', (req: Request, res: Response) => {
@@ -81,6 +101,6 @@ export default app;
 
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, () => {
-        console.log(`Backend API (No Cache) is running on port ${PORT}`);
+        console.log(`Backend API (Secured via Shared Secret) is running on port ${PORT}`);
     });
 }

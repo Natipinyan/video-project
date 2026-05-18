@@ -23,13 +23,17 @@ vi.mock('ioredis', () => {
 
 vi.mock('axios');
 
-describe('Edge Server Cache and Route Tests', () => {
+describe('Edge Server Cache and Route Tests (Secured Interservice Pipeline)', () => {
+    const MOCK_SECRET_TOKEN = 'test-secure-relay-token-123';
+
     beforeEach(() => {
         vi.clearAllMocks();
         (redis as any).storage.clear();
+
+        process.env.INTERNAL_AUTH_TOKEN = MOCK_SECRET_TOKEN;
     });
 
-    it('Cache Miss Path: should fetch from backend, store in redis cache, and return 200', async () => {
+    it('Cache Miss Path: should fetch from backend with secure headers, store in redis cache, and return 200', async () => {
         const fakeVideoBuffer = Buffer.from('backend-video-bytes');
 
         vi.mocked(axios.get).mockResolvedValueOnce({
@@ -42,6 +46,13 @@ describe('Edge Server Cache and Route Tests', () => {
         expect(res.status).toBe(200);
         expect(res.headers['content-type']).toBe('video/MP2T');
         expect(res.body.toString()).toBe('backend-video-bytes');
+
+        expect(axios.get).toHaveBeenCalledWith(
+            expect.stringContaining('/ch1/stream0.ts'),
+            expect.objectContaining({
+                headers: { 'X-Relay-Token': MOCK_SECRET_TOKEN }
+            })
+        );
 
         const cached = await redis.getBuffer('edge:ch1:stream0.ts');
         expect(cached).not.toBeNull();
@@ -80,11 +91,7 @@ describe('Edge Server Cache and Route Tests', () => {
     // 3. DYNAMIC CHANNELS PROXY TESTS (/channels)
     // =========================================================================
     describe('GET /channels Proxy Path', () => {
-        it('should successfully proxy channels array from backend-api', async () => {
-            /**
-             * PURPOSE: Ensure the Edge server acts as a clean proxy.
-             * It should call the Backend API channels endpoint and forward the exact JSON data.
-             */
+        it('should successfully proxy channels array from backend-api with secret headers', async () => {
             const mockBackendChannels = [
                 { value: 'channel1', label: 'Channel 1', description: 'Test 1' },
                 { value: 'channel2', label: 'Channel 2', description: 'Test 2' }
@@ -101,14 +108,31 @@ describe('Edge Server Cache and Route Tests', () => {
             expect(res.headers['content-type'].toLowerCase()).toContain('application/json');
             expect(res.body).toEqual(mockBackendChannels);
 
-            expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/channels'), expect.any(Object));
+            expect(axios.get).toHaveBeenCalledWith(
+                expect.stringContaining('/channels'),
+                expect.objectContaining({
+                    headers: { 'X-Relay-Token': MOCK_SECRET_TOKEN }
+                })
+            );
+        });
+
+        it('should return 403 Forbidden if backend rejects the credentials with 401', async () => {
+            /**
+             * PURPOSE: Acceptance Criteria validation.
+             * If backend responds with 401 Unauthorized (invalid secret token),
+             * Edge must fail closed and return 403 Forbidden to the client.
+             */
+            vi.mocked(axios.get).mockRejectedValueOnce({
+                response: { status: 401, data: 'Unauthorized' }
+            });
+
+            const res = await request(app).get('/channels');
+
+            expect(res.status).toBe(403);
+            expect(res.text).toContain('Forbidden');
         });
 
         it('should return 502 Bad Gateway if the backend API fails or is offline', async () => {
-            /**
-             * PURPOSE: Resiliency check. If the central Backend API is down,
-             * the Edge server shouldn't crash; it must return a clear 502 error to the UI.
-             */
             vi.mocked(axios.get).mockRejectedValueOnce(new Error('Connection refused'));
 
             const res = await request(app).get('/channels');
