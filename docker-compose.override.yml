@@ -1,0 +1,33 @@
+  services:
+    api:
+      volumes:
+        - ./services/backend-api/src:/app/src
+      command: ["npx", "ts-node-dev", "--respawn", "--transpile-only", "src/index.ts"]
+      healthcheck:
+        start_period: 60s
+
+    edge-server:
+      volumes:
+        - ./services/edge-server/src:/app/src
+      command: ["npx", "ts-node-dev", "--respawn", "--transpile-only", "src/index.ts"]
+      healthcheck:
+        start_period: 60s
+
+    receiver-1:
+      volumes:
+        - ./services/receiver/src:/app/src
+      command: ["npx", "ts-node-dev", "--respawn", "--transpile-only", "src/index.ts"]
+      healthcheck:
+        start_period: 60s
+
+    receiver-2:
+      volumes:
+        - ./services/receiver/src:/app/src
+      command: ["npx", "ts-node-dev", "--respawn", "--transpile-only", "src/index.ts"]
+      healthcheck:
+        start_period: 60s
+
+    web-ui:
+      volumes:
+        - ./services/web-ui/src:/app/src
+        - ./services/web-ui/package.json:/app/package.json
