@@ -312,3 +312,18 @@ If a pipeline enters an unstable state or you need to clear memory caches cleanl
 1. Stop the active stack and completely wipe all transient volumes and network buffers:
    ```bash
    docker compose down -v
+
+---
+
+# Local Development Inner Loop
+
+The project utilizes an automated configuration injection layer via `docker-compose.override.yml` to achieve sub-second live reloads and dynamic hot updates without requiring continuous image rebuilds.
+
+### Dynamic Reload Ecosystem
+* **Backend Architectures (`api`, `edge-server`, `receiver`):** Mapped local `/src` volumes are actively monitored using `ts-node-dev`. Code changes trigger instant isolated context restarts inside the container in under `1s`.
+* **Frontend Ecosystem (`web-ui`):** Mapped workspace mounts capture client interface updates, letting Vite compute and stream instant Hot Module Replacement (HMR) fragments directly to your local browser layer.
+
+### How to Execute Local Development Tasks
+Simply spin up the baseline compose ecosystem normally. The toolset dynamically detects and applies development overrides automatically:
+```bash
+docker compose up
