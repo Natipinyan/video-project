@@ -19,7 +19,7 @@ const getEnvConfig = (): Config => {
     const hlsListSize = process.env.HLS_LIST_SIZE || '5';
 
     const segmentTtl = process.env.HLS_SEGMENT_TTL ? parseInt(process.env.HLS_SEGMENT_TTL, 10) : 600;
-    const playlistTtl = process.env.HLS_PLAYLIST_TTL ? parseInt(process.env.HLS_PLAYLIST_TTL, 10) : 300;
+    const playlistTtl = process.env.HLS_PLAYLIST_TTL ? parseInt(process.env.HLS_PLAYLIST_TTL, 10) : 30;
 
     if (isNaN(segmentTtl) || isNaN(playlistTtl)) {
         throw new Error("[CONFIG ERROR]: Redis TTL environment variables must be valid numbers.");
